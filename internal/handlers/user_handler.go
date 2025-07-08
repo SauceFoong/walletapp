@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"walletapp/internal/models"
 	"walletapp/internal/repositories"
+	"walletapp/internal/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -27,7 +29,15 @@ func GetUsers(c *gin.Context) {
 	}
 	var resp []models.UserResponse
 	for _, u := range users {
-		resp = append(resp, toUserResponse(&u))
+		// Get wallet for the user
+		wallet, err := repositories.GetWalletByUserID(ctx, u.ID.String())
+		if err != nil {
+			// Include user with nil wallet
+			resp = append(resp, toUserResponse(&u, nil))
+			continue
+		}
+
+		resp = append(resp, toUserResponse(&u, wallet))
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -44,12 +54,20 @@ func GetUsers(c *gin.Context) {
 func GetUserByID(c *gin.Context) {
 	id := c.Param("id")
 	ctx := context.Background()
+	// Get user by ID
 	user, err := repositories.GetUserByID(ctx, id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "User not found"})
 		return
 	}
-	c.JSON(http.StatusOK, toUserResponse(user))
+	// Get wallet for the user
+	wallet, err := repositories.GetWalletByUserID(ctx, id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Wallet not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, toUserResponse(user, wallet))
 }
 
 // CreateUser godoc
@@ -79,8 +97,14 @@ func CreateUser(c *gin.Context) {
 	req.Password = string(hashedPassword)
 
 	ctx := context.Background()
-	user, err := repositories.CreateUser(ctx, &req)
+	user, err := services.CreateUserWithWallet(ctx, &req)
 	if err != nil {
+		if err, ok := err.(*pgconn.PgError); ok && err.Code == "23505" {
+			// 23505 is unique_violation in Postgres
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Email or username already exists"})
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
@@ -88,7 +112,16 @@ func CreateUser(c *gin.Context) {
 }
 
 // Helper to map User to UserResponse
-func toUserResponse(u *models.User) models.UserResponse {
+func toUserResponse(u *models.User, wallet *models.Wallet) models.UserResponse {
+	var walletResp *models.WalletResponse
+	if wallet != nil {
+		walletResp = &models.WalletResponse{
+			ID:        wallet.ID,
+			Balance:   wallet.Balance,
+			CreatedAt: wallet.CreatedAt,
+			UpdatedAt: wallet.UpdatedAt,
+		}
+	}
 	return models.UserResponse{
 		ID:        u.ID,
 		Username:  u.Username,
@@ -97,6 +130,7 @@ func toUserResponse(u *models.User) models.UserResponse {
 		Email:     u.Email,
 		CreatedAt: u.CreatedAt,
 		UpdatedAt: u.UpdatedAt,
+		Wallet:    walletResp,
 	}
 }
 

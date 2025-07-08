@@ -1,7 +1,7 @@
 // @title WalletApp API
 // @version 1.0
 // @description API for wallet application
-// @host localhost:5689
+// @host localhost:8080
 // @BasePath /api
 
 package main
@@ -39,10 +39,20 @@ func main() {
 	// Grouped routes
 	api := router.Group("/api")
 	{
+		// User
 		api.GET("/users", handlers.GetUsers)
 		api.GET("/users/:id", handlers.GetUserByID)
 		api.POST("/users", handlers.CreateUser)
+
+		// Wallet
+		api.POST("/wallets/:user_id/deposit", handlers.Deposit)
+		api.POST("/wallets/:user_id/withdraw", handlers.Withdraw)
+		api.GET("/wallets/:user_id/balance", handlers.GetBalance)
+
+		// Transaction
+		api.POST("/wallets/transfer", handlers.Transfer)
+		api.GET("/wallets/:user_id/transactions", handlers.GetTransactionHistory)
 	}
 
-	router.Run(":5689")
+	router.Run(":8080")
 }
