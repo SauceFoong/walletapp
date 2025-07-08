@@ -20,7 +20,7 @@ func GetWalletByUserID(ctx context.Context, userID string) (*models.Wallet, erro
 
 func GetWalletByUserIDTx(ctx context.Context, tx pgx.Tx, userID string) (*models.Wallet, error) {
 	var w models.Wallet
-	err := tx.QueryRow(ctx, "SELECT id, user_id, balance, created_at, updated_at FROM wallets WHERE user_id = $1", userID).
+	err := tx.QueryRow(ctx, "SELECT id, user_id, balance, created_at, updated_at FROM wallets WHERE user_id = $1 FOR UPDATE", userID).
 		Scan(&w.ID, &w.UserID, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
 	if err != nil {
 		return nil, err
