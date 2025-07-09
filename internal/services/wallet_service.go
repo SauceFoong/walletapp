@@ -3,25 +3,65 @@ package services
 import (
 	"context"
 	"errors"
-	"walletapp/internal/db"
+	"math"
 	"walletapp/internal/models"
-	"walletapp/internal/repositories"
+
+	"github.com/jackc/pgx/v5"
 )
 
-func GetWallet(ctx context.Context, userID string) (*models.Wallet, error) {
-	return repositories.GetWalletByUserID(ctx, userID)
+// Maximum amount of money that can be transferred or deposited/withdrawn
+const MAX_AMOUNT = 1000000
+
+// Minimum amount of money that can be transferred or deposited/withdrawn
+const MIN_AMOUNT = 0.01
+
+// Interfaces for dependency injection
+type WalletRepo interface {
+	GetWalletByUserID(ctx context.Context, userID string) (*models.Wallet, error)
+	GetWalletByUserIDTx(ctx context.Context, tx pgx.Tx, userID string) (*models.Wallet, error)
+	UpdateWalletBalanceTx(ctx context.Context, tx pgx.Tx, userID string, newBalance float64) error
 }
 
-func Transfer(ctx context.Context, fromUserID, toUserID string, amount float64) error {
-	if amount <= 0 {
-		return errors.New("amount must be positive")
+type TransactionRepo interface {
+	CreateTransactionTx(ctx context.Context, tx pgx.Tx, t *models.Transaction) error
+}
+
+type DB interface {
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
+// WalletService holds the business logic for wallet operations
+type WalletService struct {
+	walletRepo      WalletRepo
+	transactionRepo TransactionRepo
+	db              DB
+}
+
+// NewWalletService creates a new WalletService with the given dependencies
+func NewWalletService(walletRepo WalletRepo, transactionRepo TransactionRepo, db DB) *WalletService {
+	return &WalletService{
+		walletRepo:      walletRepo,
+		transactionRepo: transactionRepo,
+		db:              db,
 	}
-	if fromUserID == toUserID {
-		return errors.New("cannot transfer to self")
+}
+
+// GetWallet retrieves a wallet by user ID
+func (s *WalletService) GetWallet(ctx context.Context, userID string) (*models.Wallet, error) {
+	return s.walletRepo.GetWalletByUserID(ctx, userID)
+}
+
+// Transfer transfers money from one user to another
+func (s *WalletService) Transfer(ctx context.Context, fromUserID, toUserID string, amount float64) (err error) {
+	if err := ValidateAmount(amount); err != nil {
+		return err
 	}
 
-	pool := db.GetPool()
-	tx, err := pool.Begin(ctx)
+	if fromUserID == toUserID {
+		return errors.New("cannot self transfer")
+	}
+
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -33,11 +73,11 @@ func Transfer(ctx context.Context, fromUserID, toUserID string, amount float64) 
 		}
 	}()
 
-	fromWallet, err := repositories.GetWalletByUserIDTx(ctx, tx, fromUserID)
+	fromWallet, err := s.walletRepo.GetWalletByUserIDTx(ctx, tx, fromUserID)
 	if err != nil {
 		return err
 	}
-	toWallet, err := repositories.GetWalletByUserIDTx(ctx, tx, toUserID)
+	toWallet, err := s.walletRepo.GetWalletByUserIDTx(ctx, tx, toUserID)
 	if err != nil {
 		return err
 	}
@@ -45,23 +85,23 @@ func Transfer(ctx context.Context, fromUserID, toUserID string, amount float64) 
 		return errors.New("insufficient balance")
 	}
 
-	err = repositories.UpdateWalletBalanceTx(ctx, tx, fromUserID, fromWallet.Balance-amount)
+	err = s.walletRepo.UpdateWalletBalanceTx(ctx, tx, fromUserID, fromWallet.Balance-amount)
 	if err != nil {
 		return err
 	}
-	err = repositories.UpdateWalletBalanceTx(ctx, tx, toUserID, toWallet.Balance+amount)
+	err = s.walletRepo.UpdateWalletBalanceTx(ctx, tx, toUserID, toWallet.Balance+amount)
 	if err != nil {
 		return err
 	}
 
 	// Record transactions
-	_ = repositories.CreateTransactionTx(ctx, tx, &models.Transaction{
+	_ = s.transactionRepo.CreateTransactionTx(ctx, tx, &models.Transaction{
 		WalletID:      fromWallet.ID,
 		Type:          models.TransactionTypeTransferOut,
 		Amount:        amount,
 		RelatedUserID: &toUserID,
 	})
-	_ = repositories.CreateTransactionTx(ctx, tx, &models.Transaction{
+	_ = s.transactionRepo.CreateTransactionTx(ctx, tx, &models.Transaction{
 		WalletID:      toWallet.ID,
 		Type:          models.TransactionTypeTransferIn,
 		Amount:        amount,
@@ -71,12 +111,13 @@ func Transfer(ctx context.Context, fromUserID, toUserID string, amount float64) 
 	return nil
 }
 
-func Deposit(ctx context.Context, userID string, amount float64) (*models.Wallet, error) {
-	if amount <= 0 {
-		return nil, errors.New("amount must be positive")
+// Deposit adds money to a user's wallet
+func (s *WalletService) Deposit(ctx context.Context, userID string, amount float64) (*models.Wallet, error) {
+	if err := ValidateAmount(amount); err != nil {
+		return nil, err
 	}
-	pool := db.GetPool()
-	tx, err := pool.Begin(ctx)
+
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -88,17 +129,17 @@ func Deposit(ctx context.Context, userID string, amount float64) (*models.Wallet
 		}
 	}()
 
-	wallet, err := repositories.GetWalletByUserIDTx(ctx, tx, userID)
+	wallet, err := s.walletRepo.GetWalletByUserIDTx(ctx, tx, userID)
 	if err != nil {
 		return nil, err
 	}
 	newBalance := wallet.Balance + amount
-	err = repositories.UpdateWalletBalanceTx(ctx, tx, userID, newBalance)
+	err = s.walletRepo.UpdateWalletBalanceTx(ctx, tx, userID, newBalance)
 	if err != nil {
 		return nil, err
 	}
 	wallet.Balance = newBalance
-	_ = repositories.CreateTransactionTx(ctx, tx, &models.Transaction{
+	_ = s.transactionRepo.CreateTransactionTx(ctx, tx, &models.Transaction{
 		WalletID: wallet.ID,
 		Type:     models.TransactionTypeDeposit,
 		Amount:   amount,
@@ -106,12 +147,13 @@ func Deposit(ctx context.Context, userID string, amount float64) (*models.Wallet
 	return wallet, nil
 }
 
-func Withdraw(ctx context.Context, userID string, amount float64) (*models.Wallet, error) {
-	if amount <= 0 {
-		return nil, errors.New("amount must be positive")
+// Withdraw removes money from a user's wallet
+func (s *WalletService) Withdraw(ctx context.Context, userID string, amount float64) (*models.Wallet, error) {
+	if err := ValidateAmount(amount); err != nil {
+		return nil, err
 	}
-	pool := db.GetPool()
-	tx, err := pool.Begin(ctx)
+
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +165,7 @@ func Withdraw(ctx context.Context, userID string, amount float64) (*models.Walle
 		}
 	}()
 
-	wallet, err := repositories.GetWalletByUserIDTx(ctx, tx, userID)
+	wallet, err := s.walletRepo.GetWalletByUserIDTx(ctx, tx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -131,15 +173,74 @@ func Withdraw(ctx context.Context, userID string, amount float64) (*models.Walle
 		return nil, errors.New("insufficient balance")
 	}
 	newBalance := wallet.Balance - amount
-	err = repositories.UpdateWalletBalanceTx(ctx, tx, userID, newBalance)
+	err = s.walletRepo.UpdateWalletBalanceTx(ctx, tx, userID, newBalance)
 	if err != nil {
 		return nil, err
 	}
 	wallet.Balance = newBalance
-	_ = repositories.CreateTransactionTx(ctx, tx, &models.Transaction{
+	_ = s.transactionRepo.CreateTransactionTx(ctx, tx, &models.Transaction{
 		WalletID: wallet.ID,
 		Type:     models.TransactionTypeWithdraw,
 		Amount:   amount,
 	})
 	return wallet, nil
+}
+
+// ValidateAmount validates that an amount is within acceptable bounds
+func ValidateAmount(amount float64) error {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return errors.New("amount cannot be NaN or infinity")
+	}
+	if amount <= 0 {
+		return errors.New("amount must be positive")
+	}
+	if amount < MIN_AMOUNT {
+		return errors.New("amount must be at least 0.01")
+	}
+	if amount > MAX_AMOUNT {
+		return errors.New("amount exceeds maximum limit")
+	}
+	return nil
+}
+
+// Legacy functions for backward compatibility (will be removed after refactor)
+// These now delegate to a default service instance
+
+var defaultService *WalletService
+
+func init() {
+	// This will be set up in main.go with real implementations
+}
+
+// SetDefaultService sets the default service instance for legacy functions
+func SetDefaultService(service *WalletService) {
+	defaultService = service
+}
+
+func GetWallet(ctx context.Context, userID string) (*models.Wallet, error) {
+	if defaultService == nil {
+		panic("default service not initialized - call SetDefaultService first")
+	}
+	return defaultService.GetWallet(ctx, userID)
+}
+
+func Transfer(ctx context.Context, fromUserID, toUserID string, amount float64) error {
+	if defaultService == nil {
+		panic("default service not initialized - call SetDefaultService first")
+	}
+	return defaultService.Transfer(ctx, fromUserID, toUserID, amount)
+}
+
+func Deposit(ctx context.Context, userID string, amount float64) (*models.Wallet, error) {
+	if defaultService == nil {
+		panic("default service not initialized - call SetDefaultService first")
+	}
+	return defaultService.Deposit(ctx, userID, amount)
+}
+
+func Withdraw(ctx context.Context, userID string, amount float64) (*models.Wallet, error) {
+	if defaultService == nil {
+		panic("default service not initialized - call SetDefaultService first")
+	}
+	return defaultService.Withdraw(ctx, userID, amount)
 }

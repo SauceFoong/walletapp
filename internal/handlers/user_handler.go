@@ -116,7 +116,7 @@ func toUserResponse(u *models.User, wallet *models.Wallet) models.UserResponse {
 	var walletResp *models.WalletResponse
 	if wallet != nil {
 		walletResp = &models.WalletResponse{
-			ID:        wallet.ID,
+			ID:        wallet.ID.String(),
 			Balance:   wallet.Balance,
 			CreatedAt: wallet.CreatedAt,
 			UpdatedAt: wallet.UpdatedAt,

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"walletapp/internal/models"
 	"walletapp/internal/services"
@@ -27,6 +28,21 @@ func Deposit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	// Validate amount
+	if req.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount must be positive"})
+		return
+	}
+	if req.Amount > 1000000 { // $1M limit
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount exceeds maximum limit"})
+		return
+	}
+	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid amount"})
+		return
+	}
+
 	ctx := context.Background()
 	wallet, err := services.Deposit(ctx, userID, req.Amount)
 	if err != nil {
@@ -54,6 +70,21 @@ func Withdraw(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	// Validate amount
+	if req.Amount <= 0 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount must be positive"})
+		return
+	}
+	if req.Amount > 1000000 { // $1M limit
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount exceeds maximum limit"})
+		return
+	}
+	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid amount"})
+		return
+	}
+
 	ctx := context.Background()
 	wallet, err := services.Withdraw(ctx, userID, req.Amount)
 	if err != nil {

@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type TransactionType string
 
@@ -12,8 +16,8 @@ const (
 )
 
 type Transaction struct {
-	ID            string          `json:"id"`
-	WalletID      string          `json:"wallet_id"`
+	ID            uuid.UUID       `json:"id"`
+	WalletID      uuid.UUID       `json:"wallet_id"`
 	Type          TransactionType `json:"type"`
 	Amount        float64         `json:"amount"`
 	RelatedUserID *string         `json:"related_user_id,omitempty"`
