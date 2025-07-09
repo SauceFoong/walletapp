@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"walletapp/internal/logger"
 	"walletapp/internal/models"
 	"walletapp/internal/repositories"
 	"walletapp/internal/services"
@@ -21,17 +22,25 @@ import (
 // @Failure      500  {object}  models.ErrorResponse
 // @Router       /users [get]
 func GetUsers(c *gin.Context) {
+	log := logger.Get()
+	log.Info("Getting all users")
+
 	ctx := context.Background()
 	users, err := repositories.GetAllUsers(ctx)
 	if err != nil {
+		log.WithError(err).Error("Failed to get all users")
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	log.WithField("count", len(users)).Info("Retrieved users successfully")
+
 	var resp []models.UserResponse
 	for _, u := range users {
 		// Get wallet for the user
 		wallet, err := repositories.GetWalletByUserID(ctx, u.ID.String())
 		if err != nil {
+			log.WithError(err).WithField("user_id", u.ID.String()).Warn("Failed to get wallet for user, including user with nil wallet")
 			// Include user with nil wallet
 			resp = append(resp, toUserResponse(&u, nil))
 			continue
@@ -53,20 +62,26 @@ func GetUsers(c *gin.Context) {
 // @Router       /users/{id} [get]
 func GetUserByID(c *gin.Context) {
 	id := c.Param("id")
+	log := logger.Get().WithField("user_id", id)
+	log.Info("Getting user by ID")
+
 	ctx := context.Background()
 	// Get user by ID
 	user, err := repositories.GetUserByID(ctx, id)
 	if err != nil {
+		log.WithError(err).Error("User not found")
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "User not found"})
 		return
 	}
 	// Get wallet for the user
 	wallet, err := repositories.GetWalletByUserID(ctx, id)
 	if err != nil {
+		log.WithError(err).Error("Wallet not found for user")
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Wallet not found"})
 		return
 	}
 
+	log.Info("User retrieved successfully")
 	c.JSON(http.StatusOK, toUserResponse(user, wallet))
 }
 
@@ -84,13 +99,21 @@ func GetUserByID(c *gin.Context) {
 func CreateUser(c *gin.Context) {
 	var req models.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.Get().WithError(err).Error("Invalid request body for user creation")
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 
+	log := logger.Get().WithFields(map[string]interface{}{
+		"username": req.Username,
+		"email":    req.Email,
+	})
+	log.Info("Creating new user")
+
 	// Hash the password before saving
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		log.WithError(err).Error("Failed to hash password")
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Failed to hash password"})
 		return
 	}
@@ -101,13 +124,17 @@ func CreateUser(c *gin.Context) {
 	if err != nil {
 		if err, ok := err.(*pgconn.PgError); ok && err.Code == "23505" {
 			// 23505 is unique_violation in Postgres
+			log.WithError(err).Warn("User creation failed - email or username already exists")
 			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Email or username already exists"})
 			return
 		}
 
+		log.WithError(err).Error("Failed to create user")
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	log.WithField("user_id", user.ID.String()).Info("User created successfully")
 	c.JSON(http.StatusCreated, user)
 }
 

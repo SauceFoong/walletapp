@@ -1,115 +1,98 @@
 package handlers
 
 import (
-	"context"
-	"math"
 	"net/http"
+	"walletapp/internal/logger"
 	"walletapp/internal/models"
 	"walletapp/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
 
-// Deposit godoc
-// @Summary      Deposit money
-// @Description  Deposit money into user's wallet
-// @Tags         wallet
-// @Accept       json
-// @Produce      json
-// @Param        user_id path string true "User ID"
-// @Param        amount body models.AmountRequest true "Amount to deposit"
-// @Success      200 {object} models.Wallet
-// @Failure      400 {object} models.ErrorResponse
-// @Router       /wallets/{user_id}/deposit [post]
+// Deposit handles wallet deposit requests
 func Deposit(c *gin.Context) {
 	userID := c.Param("user_id")
+	log := logger.WithUser(userID).WithField("operation", "api_deposit")
+
+	log.Info("Deposit request received")
+
 	var req models.AmountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		log.WithField("error", err.Error()).Warn("Invalid request body")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: "Invalid request body",
+		})
 		return
 	}
 
-	// Validate amount
-	if req.Amount <= 0 {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount must be positive"})
-		return
-	}
-	if req.Amount > 1000000 { // $1M limit
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount exceeds maximum limit"})
-		return
-	}
-	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid amount"})
-		return
-	}
+	log.WithField("amount", req.Amount).Debug("Processing deposit request")
 
-	ctx := context.Background()
-	wallet, err := services.Deposit(ctx, userID, req.Amount)
+	wallet, err := services.Deposit(c.Request.Context(), userID, req.Amount)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		log.WithField("error", err.Error()).Error("Deposit operation failed")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: err.Error(),
+		})
 		return
 	}
-	c.JSON(http.StatusOK, wallet)
+
+	log.WithField("new_balance", wallet.Balance).Info("Deposit completed successfully")
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Message: "Deposit successful",
+	})
 }
 
-// Withdraw godoc
-// @Summary      Withdraw money
-// @Description  Withdraw money from user's wallet
-// @Tags         wallet
-// @Accept       json
-// @Produce      json
-// @Param        user_id path string true "User ID"
-// @Param        amount body models.AmountRequest true "Amount to withdraw"
-// @Success      200 {object} models.Wallet
-// @Failure      400 {object} models.ErrorResponse
-// @Router       /wallets/{user_id}/withdraw [post]
+// Withdraw handles wallet withdrawal requests
 func Withdraw(c *gin.Context) {
 	userID := c.Param("user_id")
+	log := logger.WithUser(userID).WithField("operation", "api_withdraw")
+
+	log.Info("Withdrawal request received")
+
 	var req models.AmountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		log.WithField("error", err.Error()).Warn("Invalid request body")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: "Invalid request body",
+		})
 		return
 	}
 
-	// Validate amount
-	if req.Amount <= 0 {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount must be positive"})
-		return
-	}
-	if req.Amount > 1000000 { // $1M limit
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "amount exceeds maximum limit"})
-		return
-	}
-	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid amount"})
-		return
-	}
+	log.WithField("amount", req.Amount).Debug("Processing withdrawal request")
 
-	ctx := context.Background()
-	wallet, err := services.Withdraw(ctx, userID, req.Amount)
+	wallet, err := services.Withdraw(c.Request.Context(), userID, req.Amount)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		log.WithField("error", err.Error()).Error("Withdrawal operation failed")
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: err.Error(),
+		})
 		return
 	}
-	c.JSON(http.StatusOK, wallet)
+
+	log.WithField("new_balance", wallet.Balance).Info("Withdrawal completed successfully")
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Message: "Withdrawal successful",
+	})
 }
 
-// GetBalance godoc
-// @Summary      Get wallet balance
-// @Description  Get user's wallet balance
-// @Tags         wallet
-// @Produce      json
-// @Param        user_id path string true "User ID"
-// @Success      200 {object} models.Wallet
-// @Failure      404 {object} models.ErrorResponse
-// @Router       /wallets/{user_id}/balance [get]
+// GetBalance handles balance inquiry requests
 func GetBalance(c *gin.Context) {
 	userID := c.Param("user_id")
-	ctx := context.Background()
-	wallet, err := services.GetWallet(ctx, userID)
+	log := logger.WithUser(userID).WithField("operation", "api_get_balance")
+
+	log.Info("Balance inquiry request received")
+
+	wallet, err := services.GetWallet(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: err.Error()})
+		log.WithField("error", err.Error()).Error("Failed to get wallet balance")
+		c.JSON(http.StatusNotFound, models.ErrorResponse{
+			Error: "Wallet not found",
+		})
 		return
 	}
-	c.JSON(http.StatusOK, wallet)
+
+	log.WithField("balance", wallet.Balance).Info("Balance retrieved successfully")
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Message: "Balance retrieved successfully",
+	})
 }
