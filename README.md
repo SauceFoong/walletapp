@@ -55,20 +55,6 @@ docker run --name wallet-postgres \
   -d postgres:15
 ```
 
-#### Run migration file
-
-```bash
-# Run migrations
-migrate -database "postgres://walletuser:walletpass@localhost:5432/walletdb?sslmode=disable" -path ./migrations up
-
-
-# Rollback all migrations ( If needed )
-migrate -database "postgres://walletuser:walletpass@localhost:5432/walletdb?sslmode=disable" -path ./migrations down
-
-```
-
-Note: You may use a DB client (ex: DBeaver / Pgadmin) for better visibility on the database
-
 ### 3. Configure Environment Variables
 
 Create a `.env` file in the root directory:
@@ -84,7 +70,7 @@ SERVER_PORT=8080
 go mod download
 ```
 
-### 5. Generate API Documentation
+### 5. Generate API Documentation (Swagger)
 
 ```bash
 # Install swag CLI if not already installed
@@ -94,7 +80,21 @@ go install github.com/swaggo/swag/cmd/swag@latest
 swag init --generalInfo cmd/app/main.go --output docs
 ```
 
-### 6. Run the Application
+### 6. Run Database migration
+
+```bash
+# Run migrations
+migrate -database "postgres://walletuser:walletpass@localhost:5432/walletdb?sslmode=disable" -path ./migrations up
+
+
+# Rollback all migrations ( If needed )
+migrate -database "postgres://walletuser:walletpass@localhost:5432/walletdb?sslmode=disable" -path ./migrations down
+
+```
+
+Note: You may use a DB client (ex: DBeaver / Pgadmin) for better visibility on the database
+
+### 7. Run the Application
 
 ```bash
 # Using make
@@ -149,7 +149,7 @@ GET v1/users/{user_id}
 ```
 
 Example Response: 
-```
+```json
 {
   "code": 200,
   "message": "User retrieved successfully",
@@ -177,7 +177,7 @@ GET v1/users
 ```
 
 Example Response: 
-```
+```json
 {
   "code": 200,
   "message": "Users retrieved successfully",
@@ -224,7 +224,7 @@ GET /wallets/{user_id}/balance
 ```
 
 Example Response:
-```
+```json
 {
   "code": 200,
   "message": "Balance retrieved successfully",
@@ -275,7 +275,7 @@ GET /users/{user_id}/transactions
 ```
 
 Example Response:
-```
+```json
 {
   "code": 200,
   "message": "Transaction history retrieved successfully",
@@ -449,14 +449,15 @@ The application implements comprehensive error handling:
 ###  2. Technical Decisions
 
 #### Architecture Choices
-- **Gin Framework**: Chose Gin for its lightweight and its simplicity for developemnt
+- **Gin Framework**: Chose Gin for its lightweight and simplicity for developemnt
 - **Clean Architecture**: Implemented layered architecture (handlers → services → repositories) for maintainability
 - **Dependency Injection**: Used interfaces and DI for better testability
-- **Structured Logging**: Implemented logrus for production-ready logging
+- **Structured Logging**: Implemented logrus for production-ready logging to improve observability
 
 #### Database Design
 - **PostgreSQL**: Chose for ACID compliance and financial transaction safety
 - **UUID Primary Keys**: Used UUIDs as entity primary keys for security purpose
+- **1:1 relationship between User & Wallet**: For simplicity, a user can only have one wallet. The wallet will created during account creation.
 
 #### Testing Strategy
 - **Unit Tests**: Mocked dependencies for isolated testing
