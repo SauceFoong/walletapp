@@ -30,7 +30,7 @@ type TransferRequest struct {
 // @Param        transfer body TransferRequest true "Transfer details"
 // @Success      200 {object} models.SuccessResponse
 // @Failure      400 {object} models.ErrorResponse
-// @Router       /wallets/transfer [post]
+// @Router       /v1/wallets/transfer [post]
 func Transfer(c *gin.Context) {
 	log := logger.WithField("operation", "api_transfer")
 
@@ -39,7 +39,9 @@ func Transfer(c *gin.Context) {
 	var req TransferRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		log.WithField("error", err.Error()).Warn("Invalid request body")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: err.Error(),
+		})
 		return
 	}
 
@@ -52,7 +54,9 @@ func Transfer(c *gin.Context) {
 	// Validate user IDs
 	if _, err := uuid.Parse(req.FromUserID); err != nil {
 		log.WithField("from_user_id", req.FromUserID).Warn("Invalid from_user_id format")
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "invalid from_user_id format"})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{
+			Error: "invalid from_user_id format",
+		})
 		return
 	}
 	if _, err := uuid.Parse(req.ToUserID); err != nil {
@@ -101,7 +105,10 @@ func Transfer(c *gin.Context) {
 	}
 
 	log.Info("Transfer completed successfully")
-	c.JSON(http.StatusOK, models.SuccessResponse{Message: "transfer successful"})
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
+		Message: "Transfer successful",
+	})
 }
 
 // GetTransactionHistory godoc
@@ -112,9 +119,9 @@ func Transfer(c *gin.Context) {
 // @Param        user_id path string true "User ID"
 // @Param        limit query int false "Number of transactions to return (default: 50, max: 100)"
 // @Param        offset query int false "Number of transactions to skip (default: 0)"
-// @Success      200 {array} models.Transaction
+// @Success      200 {object} models.SuccessResponse{data=[]models.Transaction}
 // @Failure      404 {object} models.ErrorResponse
-// @Router       /wallets/{user_id}/transactions [get]
+// @Router       /v1/wallets/{user_id}/transactions [get]
 func GetTransactionHistory(c *gin.Context) {
 	userID := c.Param("user_id")
 	log := logger.WithUser(userID).WithField("operation", "api_get_transaction_history")
@@ -183,5 +190,10 @@ func GetTransactionHistory(c *gin.Context) {
 	}
 
 	log.WithField("transaction_count", len(txs)).Info("Transaction history retrieved successfully")
-	c.JSON(http.StatusOK, txs)
+	// Return success response
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
+		Message: "Transaction history retrieved successfully",
+		Data:    txs,
+	})
 }

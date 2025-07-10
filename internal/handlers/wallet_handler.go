@@ -9,7 +9,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Deposit handles wallet deposit requests
+// Deposit godoc
+// @Summary      Deposit to wallet
+// @Description  Deposit money to user's wallet
+// @Tags         wallet
+// @Accept       json
+// @Produce      json
+// @Param        user_id path string true "User ID"
+// @Param        amount body models.AmountRequest true "Deposit amount"
+// @Success      200 {object} models.SuccessResponse
+// @Failure      400 {object} models.ErrorResponse
+// @Router       /v1/wallets/{user_id}/deposit [post]
 func Deposit(c *gin.Context) {
 	userID := c.Param("user_id")
 	log := logger.WithUser(userID).WithField("operation", "api_deposit")
@@ -38,11 +48,22 @@ func Deposit(c *gin.Context) {
 
 	log.WithField("new_balance", wallet.Balance).Info("Deposit completed successfully")
 	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
 		Message: "Deposit successful",
 	})
 }
 
-// Withdraw handles wallet withdrawal requests
+// Withdraw godoc
+// @Summary      Withdraw from wallet
+// @Description  Withdraw money from user's wallet
+// @Tags         wallet
+// @Accept       json
+// @Produce      json
+// @Param        user_id path string true "User ID"
+// @Param        amount body models.AmountRequest true "Withdrawal amount"
+// @Success      200 {object} models.SuccessResponse
+// @Failure      400 {object} models.ErrorResponse
+// @Router       /v1/wallets/{user_id}/withdraw [post]
 func Withdraw(c *gin.Context) {
 	userID := c.Param("user_id")
 	log := logger.WithUser(userID).WithField("operation", "api_withdraw")
@@ -71,11 +92,20 @@ func Withdraw(c *gin.Context) {
 
 	log.WithField("new_balance", wallet.Balance).Info("Withdrawal completed successfully")
 	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
 		Message: "Withdrawal successful",
 	})
 }
 
-// GetBalance handles balance inquiry requests
+// GetBalance godoc
+// @Summary      Get wallet balance
+// @Description  Get user's wallet balance
+// @Tags         wallet
+// @Produce      json
+// @Param        user_id path string true "User ID"
+// @Success      200 {object} models.SuccessResponse{data=models.BalanceResponse}
+// @Failure      404 {object} models.ErrorResponse
+// @Router       /v1/wallets/{user_id}/balance [get]
 func GetBalance(c *gin.Context) {
 	userID := c.Param("user_id")
 	log := logger.WithUser(userID).WithField("operation", "api_get_balance")
@@ -93,6 +123,11 @@ func GetBalance(c *gin.Context) {
 
 	log.WithField("balance", wallet.Balance).Info("Balance retrieved successfully")
 	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
 		Message: "Balance retrieved successfully",
+		Data: models.BalanceResponse{
+			UserID:  userID,
+			Balance: wallet.Balance,
+		},
 	})
 }

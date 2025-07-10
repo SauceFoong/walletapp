@@ -14,13 +14,13 @@ import (
 )
 
 // GetUsers godoc
-// @Summary      List users
+// @Summary      List all users
 // @Description  get all users
 // @Tags         users
 // @Produce      json
-// @Success      200  {array}   models.UserResponse
+// @Success      200  {object}  models.SuccessResponse{data=[]models.UserResponse}
 // @Failure      500  {object}  models.ErrorResponse
-// @Router       /users [get]
+// @Router       /v1/users [get]
 func GetUsers(c *gin.Context) {
 	log := logger.Get()
 	log.Info("Getting all users")
@@ -48,7 +48,13 @@ func GetUsers(c *gin.Context) {
 
 		resp = append(resp, toUserResponse(&u, wallet))
 	}
-	c.JSON(http.StatusOK, resp)
+
+	// Return success response
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
+		Message: "Users retrieved successfully",
+		Data:    resp,
+	})
 }
 
 // GetUserByID godoc
@@ -59,7 +65,7 @@ func GetUsers(c *gin.Context) {
 // @Param        id   path      string  true  "User ID"
 // @Success      200  {object}  models.UserResponse
 // @Failure      404  {object}  models.ErrorResponse
-// @Router       /users/{id} [get]
+// @Router       /v1/users/{id} [get]
 func GetUserByID(c *gin.Context) {
 	id := c.Param("id")
 	log := logger.Get().WithField("user_id", id)
@@ -82,20 +88,25 @@ func GetUserByID(c *gin.Context) {
 	}
 
 	log.Info("User retrieved successfully")
-	c.JSON(http.StatusOK, toUserResponse(user, wallet))
+	// Return success response
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Code:    200,
+		Message: "User retrieved successfully",
+		Data:    toUserResponse(user, wallet),
+	})
 }
 
 // CreateUser godoc
 // @Summary      Create user
-// @Description  create a new user
+// @Description  create a new user, wallet will be created automatically after user creation
 // @Tags         users
 // @Accept       json
 // @Produce      json
 // @Param        user body models.CreateUserRequest true "User to create"
-// @Success      201   {object}  models.User
+// @Success      201   {object}  models.SuccessResponse{data=models.UserResponse}
 // @Failure      400   {object}  models.ErrorResponse
 // @Failure      500   {object}  models.ErrorResponse
-// @Router       /users [post]
+// @Router       /v1/users [post]
 func CreateUser(c *gin.Context) {
 	var req models.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
