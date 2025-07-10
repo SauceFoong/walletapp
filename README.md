@@ -500,5 +500,8 @@ C. **Performance & Scalability**
     - Transaction history
   - **Database Optimization**: Query optimization and indexing strategies
 
+###  5. Time spent on this project
+Dedicated 4 hours each day across 3 days, resulting in a total of 12 hours.
+
 
 
